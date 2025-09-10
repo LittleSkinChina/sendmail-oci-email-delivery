@@ -19,8 +19,9 @@ class NotificationController extends Controller {
 
         $action = $request->input('data.action');
         $recipient = $request->input('data.recipient');
+        $messageId = $request->input('data.messageId');
         if($action == 'bounce') {
-            Log::channel('oci-email-delivery')->info("[Notification] Mail sent to [{$recipient}] got bounced.");
+            Log::channel('oci-email-delivery')->info("[Notification] Mail sent to [{$recipient}] got bounced, messageId=<{$messageId}>");
             Cache::put("oci-email-delivery-suppress-{$recipient}", true, 86400);
         }
 
