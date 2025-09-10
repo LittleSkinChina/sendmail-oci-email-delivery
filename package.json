@@ -1,0 +1,18 @@
+{
+  "name": "sendmail-oci-email-delivery",
+  "version": "1.0.0",
+  "title": "OCI Email Delivery",
+  "description": "使用 Oracle Cloud Infrastructure Email Delivery 发送邮件",
+  "author": "LittleSkin",
+  "url": "https://github.com/LittleSkinChina",
+  "namespace": "LittleSkin\\Sendmail\\OCIEmailDelivery",
+  "require": {
+    "blessing-skin-server": "^6"
+  },
+  "enchants": {
+    "icon": {
+      "fa": "mail-bulk",
+      "bg": "red"
+    }
+  }
+}
