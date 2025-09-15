@@ -102,16 +102,14 @@ class OCIEmailDeliveryTransport extends AbstractApiTransport
         return [
             'sender' => [
                 'compartmentId' => $this->compartmentId,
-                'senderAddress' => [
-                    'email' => config('mail.from.address'),
-                    'name' => config('mail.from.name'),
-                ]
+                'senderAddress' => self::getOCIEmailAddress($email->getFrom())[0],
             ],
             'recipients' => [
                 'to' => self::getOCIEmailAddress($email->getTo()),
                 'cc' => self::getOCIEmailAddress($email->getCc()),
                 'bcc' => self::getOCIEmailAddress($email->getBcc()),
             ],
+            'replyTo' => self::getOCIEmailAddress($email->getReplyTo()),
             'subject' => $email->getSubject(),
             'bodyHtml' => $email->getHtmlBody(),
         ];
