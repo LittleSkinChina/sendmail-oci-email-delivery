@@ -22,7 +22,7 @@ class OCIEmailDeliveryTransport extends AbstractApiTransport
     private $userId;
     private $fingerprint;
     private $privateKeyFile;
-    private $endpoint; //OCI Email Service Endpoint
+    private $endpoint; //OCI Email Delivery API Endpoint
 
     public function __construct()
     {
@@ -42,17 +42,28 @@ class OCIEmailDeliveryTransport extends AbstractApiTransport
 
     protected function doSendApi(SentMessage $sentMessage, Email $email, Envelope $envelope): ResponseInterface
     {
-        $path = '20220926/actions/submitEmail';
-        $payload = $this->getPayload($email);
-        $payloadJson = json_encode($payload, JSON_UNESCAPED_UNICODE);
-        $payloadHash = base64_encode(hash('sha256', $payloadJson, true));
+        $path = '20220926/actions/submitRawEmail';
+        $payloadRaw = $email->toString();
+        $payloadHash = base64_encode(hash('sha256', $payloadRaw, true));
+
+        $to = array_map(fn(Address $a) => $a->toString(), $email->getTo());
+        $cc = array_map(fn(Address $a) => $a->toString(), $email->getCc());
+        $bcc = array_map(fn(Address $a) => $a->toString(), $email->getBcc());
+        $recipientsHeader = implode(',', [...$to, ...$cc, ...$bcc]);
 
         $headers = [
-            'Content-Length' => strlen($payloadJson),
-            'Content-Type' => 'application/json',
+            // OCI authentication required headers
+            // https://docs.oracle.com/en-us/iaas/Content/API/Concepts/signingrequests.htm
+            'Content-Length' => strlen($payloadRaw),
+            'Content-Type' => 'message/rfc822',
             'Date' => gmdate('D, d M Y H:i:s T'),
             'Host' => $this->endpoint,
             'X-Content-SHA256' => $payloadHash,
+            // OCI Email Delivery SubmitRawEmail required headers
+            // https://docs.oracle.com/en-us/iaas/api/#/en/emaildeliverysubmission/20220926/EmailRawSubmittedResponse/SubmitRawEmail
+            'compartment-id' => $this->compartmentId,
+            'sender' => $email->getFrom()[0]->getAddress(),
+            'recipients' => $recipientsHeader,
         ];
 
         $response = $this->client->request('POST', "https://{$this->endpoint}/{$path}", [
@@ -60,7 +71,7 @@ class OCIEmailDeliveryTransport extends AbstractApiTransport
                 'Authorization' => $this->getAuthorization('POST', $path, $headers),
                 ...$headers
             ],
-            'body' => $payloadJson,
+            'body' => $payloadRaw,
         ]);
 
         try {
@@ -69,64 +80,26 @@ class OCIEmailDeliveryTransport extends AbstractApiTransport
             $messageId = $result['messageId'];
             $envelopeId = $result['envelopeId'];
 
-            $sentMessage->setMessageId($result['messageId']);
             if (count($result['suppressedRecipients'])) {
+                // Blessing Skin 现在没有同时向多个收件人发送的邮件，所以 suppressedRecipients 里最多只有一个
                 Cache::put('oci-email-delivery-suppress-' . $result['suppressedRecipients'][0]['email'], true, 86400);
                 throw new HttpTransportException('你绑定的邮箱无法接收 LittleSkin 发送的邮件，请前往「个人资料」页面更改绑定邮箱后再尝试发送', $response);
             }
         } catch (DecodingExceptionInterface | HttpExceptionInterface) {
             $statusCode = $response->getStatusCode();
-            foreach($payload['recipients']['to'] as $recipient) {
-                Log::channel('oci-email-delivery')->error('Faild to send email to [' . $payload['recipients']['to'][0]['email'] . '], status code=' . $statusCode . ', body=' . $response->getContent(false) . ', opc-request-id=' . $opcRequestId);
-            }
+            Log::channel('oci-email-delivery')->error('Faild to send email to [' . $recipientsHeader . '], status code=' . $statusCode . ', body=' . $response->getContent(false) . ', opc-request-id=' . $opcRequestId);
             if($statusCode == 429) { // Rate limit exceeded
                 throw new HttpTransportException('邮件发送失败，请稍后再试，或联系站点管理员。', $response);
             }
             throw new HttpTransportException('邮件发送失败，请联系站点管理员。详细错误：'.$response->getContent(false).sprintf(' (code %d).', $statusCode), $response);
         } catch (TransportExceptionInterface $e) {
-            foreach($payload['recipients']['to'] as $recipient) {
-                Log::channel('oci-email-delivery')->error('Faild to send email to [' . $payload['recipients']['to'][0]['email'] . ']. Could not reach the OCI Email Delivery server.');
-            }
+            Log::channel('oci-email-delivery')->error('Faild to send email to [' . $recipientsHeader . ']. Could not reach the OCI Email Delivery server.');
             throw new HttpTransportException('无法连接邮件发送服务器，请稍后再试，或联系站点管理员。详细错误：Could not reach the OCI Email Delivery server.', $response, 0, $e);
         }
 
-        foreach($payload['recipients']['to'] as $recipient) {
-            Log::channel('oci-email-delivery')->info('Email sent to [' . $recipient['email'] . '], messageId='  . $messageId . ', envelopId=' . $envelopeId . ', opc-request-id=' . $opcRequestId);
-        }
+        Log::channel('oci-email-delivery')->info('Email sent to [' . $recipientsHeader . '], messageId='  . $messageId . ', envelopId=' . $envelopeId . ', opc-request-id=' . $opcRequestId);
 
         return $response;
-    }
-
-    private function getPayload(Email $email): array
-    {
-        return [
-            'sender' => [
-                'compartmentId' => $this->compartmentId,
-                'senderAddress' => self::getOCIEmailAddress($email->getFrom())[0],
-            ],
-            'recipients' => [
-                'to' => self::getOCIEmailAddress($email->getTo()),
-                'cc' => self::getOCIEmailAddress($email->getCc()),
-                'bcc' => self::getOCIEmailAddress($email->getBcc()),
-            ],
-            'replyTo' => self::getOCIEmailAddress($email->getReplyTo()),
-            'subject' => $email->getSubject(),
-            'bodyHtml' => $email->getHtmlBody(),
-        ];
-    }
-
-    /**
-     * @param Address[] $addresses
-     */
-    static private function getOCIEmailAddress(array $addresses): array {
-        $result = [];
-        foreach ($addresses as $address) {
-            $result[] = [
-                'email' => $address->getAddress(),
-                'name' => $address->getName(),
-            ];
-        }
-        return $result;
     }
 
     private function getAuthorization(string $method, string $path, array $headers): string {
