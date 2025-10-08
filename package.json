@@ -1,6 +1,6 @@
 {
   "name": "sendmail-oci-email-delivery",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "title": "OCI Email Delivery",
   "description": "使用 Oracle Cloud Infrastructure Email Delivery 发送邮件",
   "author": "LittleSkin",
