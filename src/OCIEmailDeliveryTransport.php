@@ -86,6 +86,7 @@ class OCIEmailDeliveryTransport extends AbstractApiTransport
             if (count($result['suppressedRecipients'])) {
                 // Blessing Skin 现在没有同时向多个收件人发送的邮件，所以 suppressedRecipients 里最多只有一个
                 Cache::put('oci-email-delivery-suppress-' . $result['suppressedRecipients'][0], true, 86400);
+                Log::channel('oci-email-delivery')->info('Email sent to [' . $result['suppressedRecipients'][0] . '] was suppressed by OCI server, messageId='  . $messageId . ', envelopId=' . $envelopeId . ', opc-request-id=' . $opcRequestId);
                 throw new HttpTransportException('你绑定的邮箱地址有误，请前往「个人资料」页面更改绑定邮箱后再尝试发送', $response);
             }
         } catch (DecodingExceptionInterface | HttpExceptionInterface) {
