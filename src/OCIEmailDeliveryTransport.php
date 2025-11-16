@@ -14,9 +14,11 @@ use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\HttpExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
+use Symfony\Component\HttpClient\RetryableHttpClient;
 
 class OCIEmailDeliveryTransport extends AbstractApiTransport
 {
+    private $retryableHttpClient;
     private $tenancyId;
     private $compartmentId;
     private $userId;
@@ -33,6 +35,7 @@ class OCIEmailDeliveryTransport extends AbstractApiTransport
         $this->userId = config('mail.mailers.oci.user_id');
         $this->fingerprint = config('mail.mailers.oci.key_fingerprint');
         $this->privateKeyFile = config('mail.mailers.oci.private_key_file');
+        $this->retryableHttpClient = new RetryableHttpClient($this->client);
     }
 
     public function __toString(): string
@@ -66,7 +69,7 @@ class OCIEmailDeliveryTransport extends AbstractApiTransport
             'recipients' => $recipientsHeader,
         ];
 
-        $response = $this->client->request('POST', "https://{$this->endpoint}/{$path}", [
+        $response = $this->retryableHttpClient->request('POST', "https://{$this->endpoint}/{$path}", [
             'headers' => [
                 'Authorization' => $this->getAuthorization('POST', $path, $headers),
                 ...$headers
