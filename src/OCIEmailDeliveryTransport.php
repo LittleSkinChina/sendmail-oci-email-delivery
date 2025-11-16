@@ -85,7 +85,7 @@ class OCIEmailDeliveryTransport extends AbstractApiTransport
 
             if (count($result['suppressedRecipients'])) {
                 // Blessing Skin 现在没有同时向多个收件人发送的邮件，所以 suppressedRecipients 里最多只有一个
-                Cache::put('oci-email-delivery-suppress-' . $result['suppressedRecipients'][0]['email'], true, 86400);
+                Cache::put('oci-email-delivery-suppress-' . $result['suppressedRecipients'][0], true, 86400);
                 throw new HttpTransportException('你绑定的邮箱无法接收 LittleSkin 发送的邮件，请前往「个人资料」页面更改绑定邮箱后再尝试发送', $response);
             }
         } catch (DecodingExceptionInterface | HttpExceptionInterface) {
